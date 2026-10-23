@@ -28,12 +28,24 @@ jobs:
       - name: Import project
         run: timeout 300 godot --headless --import || true
 
-      - name: Export APK
-        env:
-          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ github.workspace }}/signing/debug.keystore
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
+      - name: Prepare the signing key
         run: |
+          # Re-save the repo's key with this machine's Java so Godot's keytool can read it.
+          # The key stays the same, so new APKs install over the old app.
+          keytool -importkeystore -noprompt \
+            -srckeystore signing/debug.keystore -srcstorepass android -srcalias androiddebugkey -srckeypass android \
+            -destkeystore "$PWD/build-debug.keystore" -deststorepass android -destalias androiddebugkey -destkeypass android \
+            -deststoretype pkcs12 \
+          || keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
+            -keystore "$PWD/build-debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          keytool -list -keystore "$PWD/build-debug.keystore" -storepass android -alias androiddebugkey
+
+      - name: Export APK
+        run: |
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$PWD/build-debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android
           mkdir -v -p build
           godot --headless --verbose --export-debug "Android" build/MatthewsSandbox.apk
           ls -la build
