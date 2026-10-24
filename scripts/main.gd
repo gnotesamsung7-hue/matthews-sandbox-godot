@@ -312,8 +312,23 @@ func explode(c: Vector2, radius: float = 190.0, power: float = 1100.0) -> void:
 	burst(c, 40, [Color("#fff1a8"), Color("#ffd23f"), Color("#ff8c32"), Color("#ff5a3c")], 520, 0.5, 10, 200)
 	burst(c, 16, [Color(0.55, 0.55, 0.6, 0.8), Color(0.75, 0.75, 0.8, 0.6)], 160, 1.2, 14, -80)
 	var hit = {}
+	for r in rags:
+		if not is_instance_valid(r):
+			continue
+		var dr = r.center() - c
+		var dl = dr.length()
+		if dl > radius:
+			continue
+		var fr = 1.0 - dl / radius
+		var dirr = dr / dl if dl > 1 else Vector2.UP
+		var kick = dirr * power * fr / sqrt(max(r.mass_total / 4.0, 0.5)) + Vector2(0, -200 * fr)
+		for b in r.parts.values():
+			b.linear_velocity += kick
+			b.angular_velocity += randf_range(-4, 4) * fr
+		hit[r] = true
+		r.hurt(75 * fr)
 	for b in get_tree().get_nodes_in_group("dyn"):
-		if not is_instance_valid(b) or b.is_queued_for_deletion():
+		if not is_instance_valid(b) or b.is_queued_for_deletion() or b.has_meta("rag"):
 			continue
 		var d = b.global_position - c
 		var dist = d.length()
@@ -369,9 +384,11 @@ func _physics_process(_dt: float) -> void:
 	if drag_body != null and is_instance_valid(drag_body):
 		if drag_body is RigidBody2D:
 			var gp = drag_body.to_global(drag_off)
-			var v = (pointer - gp) * 14.0
-			if v.length() > 2600:
-				v = v.normalized() * 2600
+			var is_rag = drag_body.has_meta("rag")
+			var v = (pointer - gp) * (9.0 if is_rag else 14.0)
+			var vmax = 1500.0 if is_rag else 2600.0
+			if v.length() > vmax:
+				v = v.normalized() * vmax
 			drag_body.linear_velocity = drag_body.linear_velocity.lerp(v, 0.6)
 			drag_body.angular_velocity *= 0.9
 			if drag_body.has_meta("rag"):

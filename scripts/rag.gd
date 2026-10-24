@@ -22,6 +22,8 @@ var head_tex := {}
 var seed_t := 0.0
 var grounded := false
 var mass_total := 0.0
+var joints: Array = []  # [parent, child, anchor in parent, anchor in child]
+static var fix_joints := true
 var down_since := -1.0
 var hit_t := -10.0
 var hit_dmg := 0.0
@@ -104,8 +106,10 @@ func _joint(a: String, b: String, at: Vector2) -> void:
 	j.softness = 0.0
 	j.disable_collision = true
 	add_child(j)
+	j.bias = 0.6
 	j.node_a = j.get_path_to(parts[a])
 	j.node_b = j.get_path_to(parts[b])
+	joints.append([parts[a], parts[b], parts[a].to_local(at), parts[b].to_local(at)])
 
 
 func torso() -> RigidBody2D:
@@ -190,9 +194,32 @@ func _on_hit(other, b) -> void:
 			hurt(dmg)
 
 
+func max_gap() -> float:
+	var m = 0.0
+	for jt in joints:
+		m = max(m, (jt[0].to_global(jt[2]) - jt[1].to_global(jt[3])).length())
+	return m
+
+
+func _snap_joints() -> void:
+	# Pull any stretched joint back together (parents first, so whole limbs follow).
+	for jt in joints:
+		var d = jt[0].to_global(jt[2]) - jt[1].to_global(jt[3])
+		var m = d.length()
+		if m > 1.0:
+			jt[1].global_position += d * ((m - 1.0) / m)
+			jt[1].linear_velocity = jt[1].linear_velocity.lerp(jt[0].linear_velocity, 0.35)
+	for b in parts.values():
+		if b.linear_velocity.length() > 1800.0:
+			b.linear_velocity = b.linear_velocity.normalized() * 1800.0
+
+
 func _physics_process(_dt: float) -> void:
 	if parts.is_empty():
 		return
+	if fix_joints:
+		_snap_joints()
+		_snap_joints()
 	var t = now()
 	grounded = parts["sh_l"].get_contact_count() > 0 or parts["sh_r"].get_contact_count() > 0
 	var dragged = t - drag_t < 0.3
@@ -243,6 +270,8 @@ func _upright(b: RigidBody2D, target: float, k: float) -> void:
 func _process(_dt: float) -> void:
 	if parts.is_empty():
 		return
+	if fix_joints:
+		_snap_joints()
 	var t = now()
 	var f = "n"
 	if not alive:

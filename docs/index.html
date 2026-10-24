@@ -260,7 +260,7 @@ function sfx(k,gap=60){ const t=performance.now(); if(t-(lastS[k]||0)<gap) retur
 
 // ============ world ============
 const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
-const engine=Engine.create(); engine.positionIterations=8; engine.velocityIterations=6; engine.constraintIterations=4;
+const engine=Engine.create(); engine.positionIterations=10; engine.velocityIterations=8; engine.constraintIterations=10;
 const world=engine.world;
 let W=1200, WORLD_H=640, scale=1, dpr=1, groundY=600, statics=[], stage="lab", bgCanvas=null, shake=0;
 const PX=4;
@@ -301,7 +301,7 @@ function makeRag(sp,x,y){
     else b=Bodies.rectangle(x+dx*u,y+dy*u,img.width*u*0.92,img.height*u*0.92,{...base});
     b.plugin={rag,part:name,img,z}; rag.parts[name]=b;
   });
-  const P=rag.parts, J=(a,b,jx,jy)=>{ const wx=x+jx*u, wy=y+jy*u; rag.joints.push(Constraint.create({bodyA:P[a],bodyB:P[b],pointA:{x:wx-P[a].position.x,y:wy-P[a].position.y},pointB:{x:wx-P[b].position.x,y:wy-P[b].position.y},length:0,stiffness:0.92,damping:0.1})); };
+  const P=rag.parts, J=(a,b,jx,jy)=>{ const wx=x+jx*u, wy=y+jy*u; rag.joints.push(Constraint.create({bodyA:P[a],bodyB:P[b],pointA:{x:wx-P[a].position.x,y:wy-P[a].position.y},pointB:{x:wx-P[b].position.x,y:wy-P[b].position.y},length:0,stiffness:1,damping:0.05})); };
   J("torso","head",0,-4.5); J("torso","ua_l",-5,-4); J("torso","ua_r",5,-4); J("ua_l","la_l",-5,0.5); J("ua_r","la_r",5,0.5);
   J("torso","th_l",-2.5,4.5); J("torso","th_r",2.5,4.5); J("th_l","sh_l",-2.5,9.5); J("th_r","sh_r",2.5,9.5);
   rag.list=Object.values(P); rag.mass=rag.list.reduce((t,b)=>t+b.mass,0);
@@ -341,7 +341,9 @@ function burst(x,y,n,cols,speed=5,life=36,size=6,g=0.25){ for(let i=0;i<n;i++){ 
 function explode(x,y,R=190,Pw=20){
   shake=16; sfx('boom'); burst(x,y,40,["#fff1a8","#ffd23f","#ff8c32","#ff5a3c"],8,30,10,0.15); burst(x,y,16,["rgba(140,140,150,.8)","rgba(190,190,200,.6)"],2.5,70,14,-0.03);
   const hit=new Set();
-  Composite.allBodies(world).forEach(b=>{ if(b.isStatic) return; const dx=b.position.x-x, dy=b.position.y-y, d=Math.hypot(dx,dy); if(d>R) return; const f=1-d/R, nx=d<1?0:dx/d, ny=d<1?-1:dy/d, k=Pw*f/Math.sqrt(Math.max(b.mass,0.5));
+  rags.forEach(r=>{ const t=r.parts.torso.position, dx=t.x-x, dy=t.y-y, d=Math.hypot(dx,dy); if(d>R) return; const f=1-d/R, nx=d<1?0:dx/d, ny=d<1?-1:dy/d, k=Pw*f/Math.sqrt(Math.max(r.mass/4,0.5));
+    r.list.forEach(b=>{ Body.setVelocity(b,{x:b.velocity.x+nx*k,y:b.velocity.y+ny*k-3*f}); Body.setAngularVelocity(b,b.angularVelocity+(Math.random()-0.5)*0.3*f); }); hit.add(r); hurt(r,75*f); });
+  Composite.allBodies(world).forEach(b=>{ if(b.isStatic||(b.plugin&&b.plugin.rag)) return; const dx=b.position.x-x, dy=b.position.y-y, d=Math.hypot(dx,dy); if(d>R) return; const f=1-d/R, nx=d<1?0:dx/d, ny=d<1?-1:dy/d, k=Pw*f/Math.sqrt(Math.max(b.mass,0.5));
     Body.setVelocity(b,{x:b.velocity.x+nx*k,y:b.velocity.y+ny*k-3*f}); Body.setAngularVelocity(b,b.angularVelocity+(Math.random()-0.5)*0.4*f);
     const pl=b.plugin; if(pl.rag&&!hit.has(pl.rag)){ hit.add(pl.rag); hurt(pl.rag,75*f); }
     if(pl.kind==="tnt"&&!pl.boomed){ pl.boomed=true; setTimeout(()=>detonate(b),100+Math.random()*80); }
@@ -404,7 +406,7 @@ canvas.addEventListener('pointerdown',e=>{
   if(mode.kind==='char'){ const sp=mode.id==='random'?randomSpec():mode.id==='dummy'?dummySpec():chars[+mode.id]; if(!sp) return; const r=makeRag(sp,p.x,Math.min(p.y,groundY-60)); say(r,`Hi! I'm ${sp.name}!`,1600,true); sfx('hi'); if(mode.id==='random'){ lastRandom=sp; buildSlots(); } return; }
   const b=bodyAt(p);
   switch(mode.id){
-    case 'drag': if(!b) return; if(b.isStatic){ drag={body:b,static:true}; } else { const c=Constraint.create({pointA:p,bodyB:b,pointB:Vector.sub(p,b.position),length:0,stiffness:0.18,damping:0.08}); Composite.add(world,c); drag={body:b,c}; } break;
+    case 'drag': if(!b) return; if(b.isStatic){ drag={body:b,static:true}; } else { const c=Constraint.create({pointA:p,bodyB:b,pointB:Vector.sub(p,b.position),length:0,stiffness:b.plugin.rag?0.08:0.18,damping:0.08}); Composite.add(world,c); drag={body:b,c}; } break;
     case 'poke': if(b) poke(b); break;
     case 'boom': explode(p.x,p.y); break;
     case 'heal': if(b&&b.plugin.rag){ const r=b.plugin.rag; r.health=100; r.alive=true; say(r,"Yay!",1400,true); sfx('magic'); burst(b.position.x,b.position.y,12,["#ff6b8a","#ffb3c6"],3,36,6,-0.05); } break;
@@ -489,9 +491,18 @@ function render(){
   for(const p of particles){ const t=p.life/p.max; ctx.globalAlpha=1-t; ctx.fillStyle=p.col; const r=p.r*(1-t*0.4); ctx.fillRect(p.x-r/2,p.y-r/2,r,r); } ctx.globalAlpha=1;
   rags.forEach(drawOverlay);
 }
+function fixJoints(){
+  rags.forEach(r=>{
+    for(const c of r.joints){
+      const A=Vector.add(c.bodyA.position,c.pointA), B=Vector.add(c.bodyB.position,c.pointB), d=Vector.sub(A,B), m=Vector.magnitude(d);
+      if(m>1) Body.translate(c.bodyB,Vector.mult(d,(m-1)/m));
+    }
+    r.list.forEach(b=>{ const v=Vector.magnitude(b.velocity); if(v>30) Body.setVelocity(b,Vector.mult(b.velocity,30/v)); });
+  });
+}
 function stepParticles(){ for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life++; p.x+=p.vx; p.y+=p.vy; p.vx*=0.95; p.vy=p.vy*0.95+p.g; if(p.life>=p.max) particles.splice(i,1); } shake*=0.86; }
 const STEP=1000/60; let last=performance.now(), acc=0;
-function frame(t){ const dt=Math.min(50,t-last); last=t; acc+=dt; let n=0; while(acc>=STEP&&n<4){ tick(); Engine.update(engine,STEP); stepParticles(); acc-=STEP; n++; } if(n===4) acc=0; render(); requestAnimationFrame(frame); }
+function frame(t){ const dt=Math.min(50,t-last); last=t; acc+=dt; let n=0; while(acc>=STEP&&n<4){ tick(); Engine.update(engine,STEP); fixJoints(); stepParticles(); acc-=STEP; n++; } if(n===4) acc=0; render(); requestAnimationFrame(frame); }
 
 // ============ UI ============
 let chars=[]; try{ chars=JSON.parse(localStorage.getItem('msp-chars')||'[]'); }catch(e){}
